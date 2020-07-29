@@ -1,0 +1,8 @@
+geopandas
+numpy
+shapely
+fiona
+rasterio
+pyproj
+pytest >= 4.6
+rasterstats
