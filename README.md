@@ -1,15 +1,7 @@
-Policy Options for Digital Infrastructure Strategies
-====================================================
-[![Build Status](https://travis-ci.org/edwardoughton/podis.svg?branch=master)](https://travis-ci.org/edwardoughton/podis)
-[![Coverage Status](https://coveralls.io/repos/github/edwardoughton/podis/badge.svg?branch=master)](https://coveralls.io/github/edwardoughton/podis?branch=master)
+Universal Broadband for Africa
+==============================
 
-**podis** allows transparent and reproducible analysis of policies options for improving
-digital infrastructure access, thus contributing to sustainable economic development.
-
-The simulation model available in this repository can be applied to local, national or regional
-telecommunication markets, to quantify the performance of different technology, business model
-or regional integration options. The evidence produced can be used to inform the design of
-digital infrastructure strategies.
+**uba** assesses the costs of universal broadband connectivity in Africa.
 
 Using conda
 ==========
@@ -18,19 +10,19 @@ The recommended installation method is to use conda, which handles packages and 
 environments, along with the conda-forge channel which has a host of pre-built libraries and
 packages.
 
-Create a conda environment called podis:
+Create a conda environment called uba:
 
-    conda create --name podis python=3.7 gdal
+    conda create --name uba python=3.7 gdal
 
 Activate it (run this each time you switch projects):
 
-    conda activate podis
+    conda activate uba
 
 First, install optional packages:
 
-    conda install geopandas rasterio rasterstats
+    conda install geopandas
 
-Then install podis:
+Then install uba:
 
     python setup.py install
 
@@ -74,19 +66,19 @@ Once complete, run the following to preprocess all data:
     python scripts/preprocess.py
 
 
-Using the model
-===============
+Using the code
+==============
 
-First run the following initial preprocessing script to extract the necessary files:
+First make sure you have run the preprocessing script to extract the necessary files:
 
     python scripts/preprocess.py
 
-Then
+Then execute:
 
-    python scripts/core.py
+    python scripts/run.py
 
 
 Thanks for the support
 ======================
 
-**podis** was written and developed at the `Environmental Change Institute, University of Oxford <http://www.eci.ox.ac.uk>`_ within the EPSRC-sponsored MISTRAL programme, as part of the `Infrastructure Transition Research Consortium <http://www.itrc.org.uk/>`_.
+**uba** was written and developed at the `Environmental Change Institute, University of Oxford <http://www.eci.ox.ac.uk>`_ within the EPSRC-sponsored MISTRAL programme, as part of the `Infrastructure Transition Research Consortium <http://www.itrc.org.uk/>`_.

@@ -10,8 +10,8 @@ import os
 import configparser
 import json
 import csv
-import pandas as pd
 import geopandas as gpd
+import pandas as pd
 import pyproj
 from shapely.geometry import Polygon, MultiPolygon, mapping, shape, MultiLineString, LineString
 from shapely.ops import transform, unary_union, nearest_points
@@ -20,11 +20,11 @@ from fiona.crs import from_epsg
 import rasterio
 from rasterio.mask import mask
 from rasterstats import zonal_stats
-import networkx as nx
-from rtree import index
-import numpy as np
-import random
-import math
+# import networkx as nx
+# from rtree import index
+# import numpy as np
+# import random
+# import math
 
 CONFIG = configparser.ConfigParser()
 CONFIG.read(os.path.join(os.path.dirname(__file__), 'script_config.ini'))
@@ -51,12 +51,11 @@ def find_country_list(continent_list):
         the stated continent.
 
     """
-    print('----')
-    print('Loading all countries')
+    # print('Loading all countries')
     path = os.path.join(DATA_RAW, 'gadm36_levels_shp', 'gadm36_0.shp')
     countries = gpd.read_file(path)
 
-    print('Adding continent information to country shapes')
+    # print('Adding continent information to country shapes')
     glob_info_path = os.path.join(BASE_PATH, 'global_information.csv')
     load_glob_info = pd.read_csv(glob_info_path, encoding = "ISO-8859-1")
     countries = countries.merge(load_glob_info, left_on='GID_0',
@@ -68,7 +67,7 @@ def find_country_list(continent_list):
 
     for index, country in subset.iterrows():
 
-        if country['GID_0'] in ['LBY', 'ESH']:
+        if country['GID_0'] in ['LBY', 'ESH', 'COM', 'CPV', 'LSO', 'MUS', 'MYT', 'SYC']:
             continue
 
         if country['GID_0'] in ['LBY', 'ESH'] :
@@ -81,6 +80,7 @@ def find_country_list(continent_list):
             'iso3': country['GID_0'],
             'iso2': country['ISO_2digit'],
             'regional_level': regional_level,
+            'region': country['region']
         })
 
     return countries
@@ -96,7 +96,7 @@ def process_country_shapes(country):
         Three digit ISO country code.
 
     """
-    print('----')
+    # print('----')
 
     iso3 = country['iso3']
 
@@ -106,18 +106,18 @@ def process_country_shapes(country):
         return 'Completed national outline processing'
 
     if not os.path.exists(path):
-        print('Creating directory {}'.format(path))
+        # print('Creating directory {}'.format(path))
         os.makedirs(path)
     shape_path = os.path.join(path, 'national_outline.shp')
 
-    print('Loading all country shapes')
+    # print('Loading all country shapes')
     path = os.path.join(DATA_RAW, 'gadm36_levels_shp', 'gadm36_0.shp')
     countries = gpd.read_file(path)
 
-    print('Getting specific country shape for {}'.format(iso3))
+    # print('Getting specific country shape for {}'.format(iso3))
     single_country = countries[countries.GID_0 == iso3]
 
-    print('Excluding small shapes')
+    # print('Excluding small shapes')
     single_country['geometry'] = single_country.apply(
         exclude_small_shapes, axis=1)
 
@@ -129,13 +129,13 @@ def process_country_shapes(country):
     #     preserve_topology=True
     # )
 
-    print('Adding ISO country code and other global information')
+    # print('Adding ISO country code and other global information')
     glob_info_path = os.path.join(BASE_PATH, 'global_information.csv')
     load_glob_info = pd.read_csv(glob_info_path, encoding = "ISO-8859-1")
     single_country = single_country.merge(
         load_glob_info,left_on='GID_0', right_on='ISO_3digit')
 
-    print('Exporting processed country shape')
+    # print('Exporting processed country shape')
     single_country.to_file(shape_path, driver='ESRI Shapefile')
 
     return print('Processing country shape complete')
@@ -166,7 +166,6 @@ def process_regions(country):
         if os.path.exists(path_processed):
             continue
 
-        print('----')
         print('Working on {} level {}'.format(iso3, regional_level))
 
         if not os.path.exists(folder):
@@ -198,7 +197,7 @@ def process_regions(country):
 
     print('Completed processing of regional shapes level {}'.format(level))
 
-    return print('complete')
+    return print('Completed processing of regions')
 
 
 def process_settlement_layer(country):
@@ -237,7 +236,6 @@ def process_settlement_layer(country):
     if os.path.exists(shape_path):
         return print('Completed settlement layer processing')
 
-    print('----')
     print('Working on {} level {}'.format(iso3, regional_level))
 
     bbox = country.envelope
@@ -291,9 +289,6 @@ def process_night_lights(country):
         filename)
 
     country = gpd.read_file(path_country)
-
-    print('----')
-    print('working on {}'.format(iso3))
 
     bbox = country.envelope
 
@@ -349,7 +344,6 @@ def process_coverage_shapes(country):
         if os.path.exists(path_output):
             continue
 
-        print('----')
         print('Working on {} in {}'.format(tech, iso3))
 
         filename = 'Inclusions_201812_{}.shp'.format(tech)
@@ -405,7 +399,7 @@ def process_coverage_shapes(country):
 
             coverage.to_file(path_output, driver='ESRI Shapefile')
 
-    print('Processed coverage shapes')
+    print('Completed processing of coverage shapes')
 
 
 def process_regional_coverage(country):
@@ -482,8 +476,8 @@ def get_regional_data(country):
 
     path_output = os.path.join(DATA_INTERMEDIATE, iso3, 'regional_data.csv')
 
-    # if os.path.exists(path_output):
-    #     return print('Regional data already exists')
+    if os.path.exists(path_output):
+        return print('Regional data already exists')
 
     path_country = os.path.join(DATA_INTERMEDIATE, iso3,
         'national_outline.shp')
@@ -491,9 +485,6 @@ def get_regional_data(country):
     coverage = process_regional_coverage(country)
 
     single_country = gpd.read_file(path_country)
-
-    print('----')
-    print('working on {}'.format(iso3))
 
     path_night_lights = os.path.join(DATA_INTERMEDIATE, iso3,
         'night_lights.tif')
@@ -532,6 +523,9 @@ def get_regional_data(country):
                 region['geometry'], array, stats=['sum'], affine=affine)][0]
 
         area_km2 = round(area_of_polygon(region['geometry']) / 1e6)
+
+        if area_km2 == 0:
+            continue
 
         if luminosity_summation == None:
             luminosity_summation = 0
@@ -573,11 +567,11 @@ def get_regional_data(country):
             'coverage_4G_percent': round(coverage_4G_km2 / area_km2 * 100 if coverage_4G_km2 else 0, 1),
         })
 
-    print('Working on backhaul')
-    backhaul_lut = estimate_backhaul(iso3, country['region'], '2025')
+    # print('Working on backhaul')
+    # backhaul_lut = estimate_backhaul(iso3, country['region'], '2025')
 
-    print('Working on estimating sites')
-    results = estimate_sites(results, iso3, backhaul_lut)
+    # print('Working on estimating sites')
+    # results = estimate_sites(results, iso3, backhaul_lut)
 
     results_df = pd.DataFrame(results)
 
@@ -2032,54 +2026,36 @@ def forecast_linear(country, historical_data, start_point, end_point, horizon):
 
 if __name__ == '__main__':
 
-    # countries = find_country_list(['Africa'])
+    countries = find_country_list(['Africa'])
+    countries = countries[::-1]
 
-    countries = [
-        {'iso3': 'SEN', 'iso2': 'SN', 'regional_level': 2, 'regional_nodes_level': 2,
-            'region': 'SSA', 'pop_density_km2': 500, 'settlement_size': 1000,
-            'subs_growth_low': 1, 'subs_growth_baseline': 2, 'subs_growth_high': 3,
-        },
-        {'iso3': 'MLI', 'iso2': 'ML', 'regional_level': 2, 'regional_nodes_level': 2,
-            'region': 'SSA', 'pop_density_km2': 500, 'settlement_size': 1000,
-            'subs_growth_low': 1, 'subs_growth_baseline': 2, 'subs_growth_high': 3,
-        },
-        {'iso3': 'CIV', 'iso2': 'CI', 'regional_level': 2, 'regional_nodes_level': 2,
-            'region': 'SSA', 'pop_density_km2': 500, 'settlement_size': 1000,
-            'subs_growth_low': 1, 'subs_growth_baseline': 2, 'subs_growth_high': 3,
-        },
-        {'iso3': 'UGA', 'iso2': 'UG', 'regional_level': 2, 'regional_nodes_level': 2,
-            'region': 'S&SE Asia', 'pop_density_km2': 500, 'settlement_size': 1000,
-            'subs_growth_low': 1, 'subs_growth_baseline': 2, 'subs_growth_high': 3,
-        },
-        {'iso3': 'KEN', 'iso2': 'KE', 'regional_level': 2, 'regional_nodes_level': 2,
-            'region': 'SSA', 'pop_density_km2': 500, 'settlement_size': 1000,
-            'subs_growth_low': 1, 'subs_growth_baseline': 2, 'subs_growth_high': 3,
-        },
-        {'iso3': 'TZA', 'iso2': 'TZ', 'regional_level': 2, 'regional_nodes_level': 2,
-            'region': 'Europe', 'pop_density_km2': 500, 'settlement_size': 1000,
-            'subs_growth_low': 1, 'subs_growth_baseline': 2, 'subs_growth_high': 3,
-        },
-    ]
+    for country in countries:#[:1]:
 
-    for country in countries:
+        # #Egypt is failing
+        # if not country['iso3'] == 'EGY':
+        #     continue
 
-        # print('Processing country boundary')
-        # process_country_shapes(country)
+        print('----')
+        print('-- Working on {}'.format(country['country_name']))
+        print('----')
 
-        # print('Processing regions')
-        # process_regions(country)
+        print('Processing country boundary')
+        process_country_shapes(country)
 
-        # print('Processing settlement layer')
-        # process_settlement_layer(country)
+        print('Processing regions')
+        process_regions(country)
 
-        # print('Processing night lights')
-        # process_night_lights(country)
+        print('Processing settlement layer')
+        process_settlement_layer(country)
 
-        # print('Processing coverage shapes')
-        # process_coverage_shapes(country)
+        print('Processing night lights')
+        process_night_lights(country)
 
-        # print('Getting regional data')
-        # get_regional_data(country)
+        print('Processing coverage shapes')
+        process_coverage_shapes(country)
+
+        print('Getting regional data')
+        get_regional_data(country)
 
         # print('Generating agglomeration lookup table')
         # generate_agglomeration_lut(country)
@@ -2105,5 +2081,5 @@ if __name__ == '__main__':
         # print('Create backhaul lookup table')
         # generate_backhaul_lut(country)
 
-        print('Create subscription forcast')
-        forecast_subscriptions(country)
+        # print('Create subscription forcast')
+        # forecast_subscriptions(country)
