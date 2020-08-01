@@ -20,7 +20,7 @@ Activate it (run this each time you switch projects):
 
 First, install optional packages:
 
-    conda install geopandas
+    conda install geopandas sklearn contextily
 
 Then install uba:
 
