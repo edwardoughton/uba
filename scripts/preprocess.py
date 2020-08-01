@@ -20,11 +20,11 @@ from fiona.crs import from_epsg
 import rasterio
 from rasterio.mask import mask
 from rasterstats import zonal_stats
+import random
 # import networkx as nx
 # from rtree import index
 # import numpy as np
-# import random
-# import math
+import math
 
 CONFIG = configparser.ConfigParser()
 CONFIG.read(os.path.join(os.path.dirname(__file__), 'script_config.ini'))
@@ -57,7 +57,7 @@ def find_country_list(continent_list):
 
     # print('Adding continent information to country shapes')
     glob_info_path = os.path.join(BASE_PATH, 'global_information.csv')
-    load_glob_info = pd.read_csv(glob_info_path, encoding = "ISO-8859-1")
+    load_glob_info = pd.read_csv(glob_info_path, encoding = "ISO-8859-1", keep_default_na=False)
     countries = countries.merge(load_glob_info, left_on='GID_0',
         right_on='ISO_3digit')
 
@@ -67,10 +67,7 @@ def find_country_list(continent_list):
 
     for index, country in subset.iterrows():
 
-        if country['GID_0'] in ['LBY', 'ESH', 'COM', 'CPV', 'LSO', 'MUS', 'MYT', 'SYC']:
-            continue
-
-        if country['GID_0'] in ['LBY', 'ESH'] :
+        if country['GID_0'] in ['COM','CPV','ESH','LBY','LSO','MUS','MYT','SYC'] :
             regional_level =  1
         else:
             regional_level = 2
@@ -131,7 +128,7 @@ def process_country_shapes(country):
 
     # print('Adding ISO country code and other global information')
     glob_info_path = os.path.join(BASE_PATH, 'global_information.csv')
-    load_glob_info = pd.read_csv(glob_info_path, encoding = "ISO-8859-1")
+    load_glob_info = pd.read_csv(glob_info_path, encoding = "ISO-8859-1", keep_default_na=False)
     single_country = single_country.merge(
         load_glob_info,left_on='GID_0', right_on='ISO_3digit')
 
@@ -476,8 +473,8 @@ def get_regional_data(country):
 
     path_output = os.path.join(DATA_INTERMEDIATE, iso3, 'regional_data.csv')
 
-    if os.path.exists(path_output):
-        return print('Regional data already exists')
+    # if os.path.exists(path_output):
+    #     return print('Regional data already exists')
 
     path_country = os.path.join(DATA_INTERMEDIATE, iso3,
         'national_outline.shp')
@@ -555,6 +552,7 @@ def get_regional_data(country):
             coverage_4G_km2 = 0
 
         results.append({
+            # 'country_name': region['country_name'],
             'GID_0': region['GID_0'],
             'GID_id': region[gid_level],
             'GID_level': gid_level,
@@ -567,11 +565,11 @@ def get_regional_data(country):
             'coverage_4G_percent': round(coverage_4G_km2 / area_km2 * 100 if coverage_4G_km2 else 0, 1),
         })
 
-    # print('Working on backhaul')
-    # backhaul_lut = estimate_backhaul(iso3, country['region'], '2025')
+    print('Working on backhaul')
+    backhaul_lut = estimate_backhaul(iso3, country['region'], '2025')
 
-    # print('Working on estimating sites')
-    # results = estimate_sites(results, iso3, backhaul_lut)
+    print('Working on estimating sites')
+    results = estimate_sites(results, iso3, backhaul_lut)
 
     results_df = pd.DataFrame(results)
 
@@ -584,6 +582,7 @@ def get_regional_data(country):
 
 def estimate_sites(data, iso3, backhaul_lut):
     """
+
     """
     output = []
 
@@ -606,18 +605,26 @@ def estimate_sites(data, iso3, backhaul_lut):
         population += int(region['population'])
 
     path = os.path.join(DATA_RAW, 'wb_mobile_coverage', 'wb_population_coverage.csv')
-    coverage = pd.read_csv(path)
-    coverage = coverage.loc[coverage['Country ISO3'] == iso3]
-    coverage = coverage['2016'].values[0]
+    coverage = 0
+    coverage_data = pd.read_csv(path, keep_default_na=False)
+    coverage_data = coverage_data.loc[coverage_data['Country ISO3'] == iso3]
+    if len(coverage_data) > 0:
+        coverage = coverage_data['2016'].values[0]
 
     population_covered = population * (coverage / 100)
 
     path = os.path.join(DATA_RAW, 'real_site_data', 'tower_counts', 'tower_counts.csv')
-    towers = pd.read_csv(path, encoding = "ISO-8859-1")
-    towers = towers.loc[towers['ISO_3digit'] == iso3]
-    towers = towers['count'].values[0]
+    towers = 0
+    tower_data = pd.read_csv(path, encoding = "ISO-8859-1", keep_default_na=False)
+    tower_data = tower_data.loc[tower_data['ISO_3digit'] == iso3]
 
-    towers_per_pop = towers / population_covered
+    if tower_data['count'].values[0] > 0:
+        towers = tower_data['count'].values[0]
+
+    try:
+        towers_per_pop = float(towers) / float(population_covered)
+    except:
+        towers_per_pop = 0
 
     tower_backhaul_lut = estimate_backhaul_type(backhaul_lut)
 
@@ -638,8 +645,14 @@ def estimate_sites(data, iso3, backhaul_lut):
         #or if we don't have data estimate sites per area
         else:
             if covered_pop_so_far < population_covered:
+
                 sites_estimated_total = region['population'] * towers_per_pop
                 sites_estimated_km2 = region['population_km2'] * towers_per_pop
+
+                if math.isnan(sites_estimated_total):
+                    sites_estimated_total = 0
+                if math.isnan(sites_estimated_km2):
+                    sites_estimated_km2 = 0
 
             else:
                 sites_estimated_total = 0
@@ -664,6 +677,7 @@ def estimate_sites(data, iso3, backhaul_lut):
                 backhaul_satellite += 1
 
         output.append({
+                # 'country_name': region['country_name'],
                 'GID_0': region['GID_0'],
                 'GID_id': region['GID_id'],
                 'GID_level': region['GID_level'],
@@ -1212,818 +1226,6 @@ def find_nodes_on_existing_infrastructure(country):
     return print('Found nodes on existing infrastructure')
 
 
-def find_nodes(country, regions):
-    """
-    Find key nodes.
-    """
-    iso3 = country['iso3']
-    regional_level = country['regional_level']
-    GID_level = 'GID_{}'.format(regional_level)
-
-    threshold = country['pop_density_km2']
-    settlement_size = country['settlement_size']
-
-    folder_tifs = os.path.join(DATA_INTERMEDIATE, iso3, 'agglomerations', 'tifs')
-
-    interim = []
-    missing_nodes = set()
-
-    print('Working on gathering data from regional rasters')
-    for idx, region in regions.iterrows():
-
-        path = os.path.join(folder_tifs, region[GID_level] + '.tif')
-
-        with rasterio.open(path) as src:
-            data = src.read()
-            data[data < threshold] = 0
-            data[data >= threshold] = 1
-            polygons = rasterio.features.shapes(data, transform=src.transform)
-            shapes_df = gpd.GeoDataFrame.from_features(
-                [
-                    {'geometry': poly, 'properties':{'value':value}}
-                    for poly, value in polygons
-                    if value > 0
-                ],
-                crs='epsg:4326'
-            )
-
-        geojson_region = [
-            {
-                'geometry': region['geometry'],
-                'properties': {
-                    GID_level: region[GID_level]
-                }
-            }
-        ]
-
-        gpd_region = gpd.GeoDataFrame.from_features(
-                [
-                    {'geometry': poly['geometry'],
-                    'properties':{
-                        GID_level: poly['properties'][GID_level]
-                        }}
-                    for poly in geojson_region
-                ], crs='epsg:4326'
-            )
-
-        if len(shapes_df) == 0:
-            continue
-
-        nodes = gpd.overlay(shapes_df, gpd_region, how='intersection')
-
-        stats = zonal_stats(shapes_df['geometry'], path, stats=['count', 'sum'])
-
-        stats_df = pd.DataFrame(stats)
-
-        nodes = pd.concat([shapes_df, stats_df], axis=1).drop(columns='value')
-
-        nodes_subset = nodes[nodes['sum'] >= settlement_size]
-
-        if len(nodes_subset) == 0:
-            missing_nodes.add(region[GID_level])
-
-        for idx, item in nodes_subset.iterrows():
-            interim.append({
-                    'geometry': item['geometry'].centroid,
-                    'properties': {
-                        GID_level: region[GID_level],
-                        'count': item['count'],
-                        'sum': item['sum']
-                    }
-            })
-
-    return interim, missing_nodes
-
-
-def get_missing_nodes(country, regions, missing_nodes, threshold, settlement_size):
-    """
-    Find any missing nodes
-    """
-    iso3 = country['iso3']
-    regional_level = country['regional_level']
-    GID_level = 'GID_{}'.format(regional_level)
-
-    folder_tifs = os.path.join(DATA_INTERMEDIATE, iso3, 'agglomerations', 'tifs')
-
-    interim = []
-
-    for idx, region in regions.iterrows():
-
-        if not region[GID_level] in list(missing_nodes):
-            continue
-
-        path = os.path.join(folder_tifs, region[GID_level] + '.tif')
-
-        with rasterio.open(path) as src:
-            data = src.read()
-            data[data < threshold] = 0
-            data[data >= threshold] = 1
-            polygons = rasterio.features.shapes(data, transform=src.transform)
-            shapes_df = gpd.GeoDataFrame.from_features(
-                [
-                    {'geometry': poly, 'properties':{'value':value}}
-                    for poly, value in polygons
-                    if value > 0
-                ],
-                crs='epsg:4326'
-            )
-
-        geojson_region = [
-            {
-                'geometry': region['geometry'],
-                'properties': {
-                    GID_level: region[GID_level]
-                }
-            }
-        ]
-
-        gpd_region = gpd.GeoDataFrame.from_features(
-                [
-                    {'geometry': poly['geometry'],
-                    'properties':{
-                        GID_level: poly['properties'][GID_level]
-                        }}
-                    for poly in geojson_region
-                ], crs='epsg:4326'
-            )
-
-        nodes = gpd.overlay(shapes_df, gpd_region, how='intersection')
-
-        stats = zonal_stats(shapes_df['geometry'], path, stats=['count', 'sum'])
-
-        stats_df = pd.DataFrame(stats)
-
-        nodes = pd.concat([shapes_df, stats_df], axis=1).drop(columns='value')
-
-        max_sum = nodes['sum'].max()
-
-        nodes = nodes[nodes['sum'] > max_sum - 1]
-
-        for idx, item in nodes.iterrows():
-            interim.append({
-                    'geometry': item['geometry'].centroid,
-                    'properties': {
-                        GID_level: region[GID_level],
-                        'count': item['count'],
-                        'sum': item['sum']
-                    }
-            })
-
-    return interim
-
-
-def find_regional_nodes(country):
-    """
-    """
-    iso3 = country['iso3']
-    regional_level = country['regional_level']
-    GID_level = 'GID_{}'.format(regional_level)
-
-    folder = os.path.join(DATA_INTERMEDIATE, iso3)
-    input_path = os.path.join(folder, 'agglomerations', 'agglomerations.shp')
-    existing_nodes_path = os.path.join(folder, 'network_existing', 'core_nodes_existing.shp')
-    output_path = os.path.join(folder, 'network', 'core_nodes.shp')
-    regional_output_path = os.path.join(folder, 'network', 'regional_nodes')
-
-    regions = gpd.read_file(input_path, crs="epsg:4326")
-    unique_regions = regions[GID_level].unique()
-
-    if os.path.exists(output_path):
-        return print('Regional nodes layer already generated')
-
-    folder = os.path.dirname(output_path)
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
-    if not os.path.exists(regional_output_path):
-        os.makedirs(regional_output_path)
-
-    interim = []
-
-    for unique_region in unique_regions:
-        agglomerations = []
-        for idx, region in regions.iterrows():
-            if unique_region == region[GID_level]:
-                agglomerations.append({
-                    'type': 'Feature',
-                    'geometry': region['geometry'],
-                    'properties': {
-                        GID_level: region[GID_level],
-                        'population': region['population'],
-                        'source': 'existing',
-                    }
-                })
-
-        regional_nodes = gpd.GeoDataFrame.from_features(agglomerations, crs='epsg:4326')
-        path = os.path.join(regional_output_path, unique_region + '.shp')
-        regional_nodes.to_file(path)
-
-        agglomerations = sorted(agglomerations, key=lambda k: k['properties']['population'], reverse=True)
-
-        interim.append(agglomerations[0])
-
-    if os.path.exists(existing_nodes_path):
-
-        output = []
-        new_nodes = []
-        seen = set()
-
-        existing_nodes = gpd.read_file(existing_nodes_path, crs='epsg:4326')
-        existing_nodes = existing_nodes.to_dict('records')
-
-        for item in existing_nodes:
-            seen.add(item[GID_level])
-            output.append({
-                'type': 'Point',
-                'geometry': mapping(item['geometry']),
-                'properties': {
-                    GID_level: item[GID_level],
-                    'population': item['population'],
-                    'source': 'existing',
-                }
-            })
-
-        for item in interim:
-            if not item['properties'][GID_level] in seen:
-                new_node = {
-                    'type': 'Point',
-                    'geometry': mapping(item['geometry']),
-                    'properties': {
-                        GID_level: item['properties'][GID_level],
-                        'population': item['properties']['population'],
-                        'source': 'new',
-                    }
-                }
-                output.append(new_node)
-                new_nodes.append(new_node)
-
-        output = gpd.GeoDataFrame.from_features(output)
-        output.to_file(output_path, crs='epsg:4326')#write core nodes
-
-        if len(new_nodes) > 0:
-            new_nodes = gpd.GeoDataFrame.from_features(new_nodes)
-            path = os.path.join(DATA_INTERMEDIATE, iso3, 'network', 'new_nodes.shp')
-            new_nodes.to_file(path, crs='epsg:4326')#write core nodes
-
-    if not os.path.exists(output_path):
-
-        output = gpd.GeoDataFrame.from_features(
-            [
-                {'geometry': item['geometry'], 'properties': item['properties']}
-                for item in interim
-            ],
-            crs='epsg:4326'
-        )
-        output['source'] = 'new'
-        output.to_file(output_path)#write core nodes
-
-    output = []
-
-    for unique_region in unique_regions:
-
-        path = os.path.join(regional_output_path, unique_region + '.shp')
-        if os.path.exists(path):
-            regional_nodes = gpd.read_file(path, crs='epsg:4326')
-
-            for idx, regional_node in regional_nodes.iterrows():
-                output.append({
-                    'geometry': regional_node['geometry'],
-                    'properties': {
-                        'value': regional_node['population'],
-                        'source': 'new',
-                    }
-                })
-
-    output = gpd.GeoDataFrame.from_features(output, crs='epsg:4326')
-    path = os.path.join(folder, 'regional_nodes.shp')
-    output.to_file(path)
-
-    return print('Completed regional node estimation')
-
-
-def fit_edges(input_path, output_path):
-    """
-    Fit edges to nodes using a minimum spanning tree.
-    Parameters
-    ----------
-    path : string
-        Path to nodes shapefile.
-    """
-    folder = os.path.dirname(output_path)
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
-    nodes = gpd.read_file(input_path, crs='epsg:4326')
-    nodes = nodes.to_crs('epsg:3857')
-
-    all_possible_edges = []
-
-    for node1_id, node1 in nodes.iterrows():
-        for node2_id, node2 in nodes.iterrows():
-            if node1_id != node2_id:
-                geom1 = shape(node1['geometry'])
-                geom2 = shape(node2['geometry'])
-                line = LineString([geom1, geom2])
-                all_possible_edges.append({
-                    'type': 'Feature',
-                    'geometry': mapping(line),
-                    'properties':{
-                        # 'network_layer': 'core',
-                        'from': node1_id,
-                        'to':  node2_id,
-                        'length': line.length,
-                        'source': 'new',
-                    }
-                })
-    if len(all_possible_edges) == 0:
-        return
-
-    G = nx.Graph()
-
-    for node_id, node in enumerate(nodes):
-        G.add_node(node_id, object=node)
-
-    for edge in all_possible_edges:
-        G.add_edge(edge['properties']['from'], edge['properties']['to'],
-            object=edge, weight=edge['properties']['length'])
-
-    tree = nx.minimum_spanning_edges(G)
-
-    edges = []
-
-    for branch in tree:
-        link = branch[2]['object']
-        if link['properties']['length'] > 0:
-            edges.append(link)
-
-    edges = gpd.GeoDataFrame.from_features(edges, crs='epsg:3857')
-
-    if len(edges) > 0:
-        edges = edges.to_crs('epsg:4326')
-        edges.to_file(output_path)
-
-    return
-
-
-def prepare_edge_fitting(country):
-    """
-    """
-    folder = os.path.join(DATA_INTERMEDIATE, country['iso3'])
-    core_edges_path = os.path.join(folder, 'network_existing', 'core_edges_existing.shp')
-
-    if not os.path.exists(core_edges_path):
-
-        input_path = os.path.join(folder, 'network', 'core_nodes.shp')
-        output_path = os.path.join(folder, 'network', 'core_edges.shp')
-        fit_edges(input_path, output_path)
-
-    else:
-
-        core_nodes_path = os.path.join(folder, 'network_existing', 'core_nodes_existing.shp')
-        existing_nodes = gpd.read_file(core_nodes_path, crs='epsg:4326')
-        path = os.path.join(folder, 'network', 'new_nodes.shp')
-
-        output = []
-
-        if os.path.exists(path):
-
-            new_nodes = gpd.read_file(path, crs='epsg:4326')
-
-            for idx, new_node in new_nodes.iterrows():
-
-                nearest = nearest_points(new_node.geometry, existing_nodes.unary_union)[1]
-
-                geom = LineString([
-                            (
-                                new_node['geometry'].coords[0][0],
-                                new_node['geometry'].coords[0][1]
-                            ),
-                            (
-                                nearest.coords[0][0],
-                                nearest.coords[0][1]
-                            ),
-                        ])
-
-                output.append({
-                    'type': 'LineString',
-                    'geometry': mapping(geom),
-                    'properties': {
-                        'id': idx,
-                        'source': 'new'
-                    }
-                })
-
-        existing_edges = gpd.read_file(core_edges_path, crs='epsg:4326')
-
-        for idx, existing_edge in existing_edges.iterrows():
-            output.append({
-                'type': 'LineString',
-                'geometry': mapping(existing_edge['geometry']),
-                'properties': {
-                    'id': idx,
-                    'source': 'existing'
-                }
-            })
-
-        output = gpd.GeoDataFrame.from_features(output)
-        path = os.path.join(folder, 'network', 'core_edges.shp')
-        output.to_file(path, crs='epsg:4326')
-
-
-def fit_regional_edges(country):
-    """
-    """
-    iso3 = country['iso3']
-    regional_level = country['regional_level']
-    GID_level = 'GID_{}'.format(regional_level)
-
-    folder = os.path.join(DATA_INTERMEDIATE, iso3, 'network')
-    path = os.path.join(folder, 'core_nodes.shp')
-
-    nodes = gpd.read_file(path, crs="epsg:4326")
-    unique_regions = nodes[GID_level].unique()
-
-    for unique_region in unique_regions:
-
-        input_path = os.path.join(folder, 'regional_nodes', unique_region + '.shp')
-        output_path = os.path.join(DATA_INTERMEDIATE, country['iso3'], 'network', 'regional_edges', unique_region + '.shp')
-        fit_edges(input_path, output_path)
-
-    output = []
-
-    for unique_region in unique_regions:
-
-        path = os.path.join(DATA_INTERMEDIATE, country['iso3'], 'network', 'regional_edges', unique_region + '.shp')
-        if os.path.exists(path):
-            regional_edges = gpd.read_file(path, crs='epsg:4326')
-
-            for idx, regional_edge in regional_edges.iterrows():
-                output.append({
-                    'geometry': regional_edge['geometry'],
-                    'properties': {
-                        'value': regional_edge['length'],
-                        'source': 'new',
-                    }
-                })
-
-    output = gpd.GeoDataFrame.from_features(output, crs='epsg:4326')
-    path = os.path.join(folder, 'regional_edges.shp')
-    output.to_file(path)
-
-    return print('Regional edge fitting complete')
-
-
-def generate_core_lut(country):
-    """
-    Generate core lut.
-    """
-    iso3 = country['iso3']
-    level = country['regional_level']
-    regional_level = 'GID_{}'.format(level)
-
-    filename = 'core_lut.csv'
-    folder = os.path.join(DATA_INTERMEDIATE, iso3)
-    output_path = os.path.join(folder, filename)
-
-    # if os.path.exists(output_path):
-    #     return print('Core LUT already generated')
-
-    filename = 'regions_{}_{}.shp'.format(level, iso3)
-    folder = os.path.join(DATA_INTERMEDIATE, iso3, 'regions')
-    path = os.path.join(folder, filename)
-    regions = gpd.read_file(path)
-    regions.crs = 'epsg:4326'
-
-    output = []
-
-    path = os.path.join(DATA_INTERMEDIATE, iso3, 'network', 'core_edges.shp')
-    core_edges = gpd.read_file(path)
-    core_edges.crs = 'epsg:4326'
-    core_edges = gpd.GeoDataFrame(
-        {'geometry': core_edges['geometry'], 'source': core_edges['source']})
-
-    existing_edges = core_edges.loc[core_edges['source'] == 'existing']
-    existing_edges = gpd.clip(regions, existing_edges)
-    existing_edges = existing_edges.to_crs('epsg:3857')
-    existing_edges['length'] = existing_edges['geometry'].length
-
-    for idx, edge in existing_edges.iterrows():
-        output.append({
-            'GID_id': edge[regional_level],
-            'asset': 'core_edge',
-            'value': edge['length'],
-            'source': 'existing',
-        })
-
-    new_edges = core_edges.loc[core_edges['source'] == 'new']
-    new_edges = gpd.clip(regions, new_edges)
-    new_edges = new_edges.to_crs('epsg:3857')
-    new_edges['length'] = new_edges['geometry'].length
-
-    for idx, edge in new_edges.iterrows():
-        output.append({
-            'GID_id': edge[regional_level],
-            'asset': 'core_edge',
-            'value': edge['length'],
-            'source': 'new',
-        })
-
-
-    path = os.path.join(DATA_INTERMEDIATE, iso3, 'network', 'regional_edges.shp')
-    if os.path.exists(path):
-        regional_edges = gpd.read_file(path, crs='epsg:4326')
-
-        regional_edges = gpd.clip(regions, regional_edges)
-        regional_edges = regional_edges.to_crs('epsg:3857')
-        regional_edges['length'] = regional_edges['geometry'].length
-
-        for idx, edge in regional_edges.iterrows():
-            output.append({
-                'GID_id': edge[regional_level],
-                'asset': 'regional_edge',
-                'value': edge['length'],
-                'source': 'new', #all regional edges are assumed to be new
-            })
-
-    path = os.path.join(DATA_INTERMEDIATE, iso3, 'network', 'core_nodes.shp')
-    nodes = gpd.read_file(path, crs='epsg:4326')
-
-    existing_nodes = nodes.loc[nodes['source'] == 'existing']
-    f = lambda x:np.sum(existing_nodes.intersects(x))
-    regions['nodes'] = regions['geometry'].apply(f)
-
-    for idx, region in regions.iterrows():
-        output.append({
-            'GID_id': region[regional_level],
-            'asset': 'core_node',
-            'value': region['nodes'],
-            'source': 'existing',
-        })
-
-    new_nodes = nodes.loc[nodes['source'] == 'new']
-    f = lambda x:np.sum(new_nodes.intersects(x))
-    regions['nodes'] = regions['geometry'].apply(f)
-
-    for idx, region in regions.iterrows():
-        output.append({
-            'GID_id': region[regional_level],
-            'asset': 'core_node',
-            'value': region['nodes'],
-            'source': 'new',
-        })
-
-    path = os.path.join(DATA_INTERMEDIATE, iso3, 'network', 'regional_nodes.shp')
-    regional_nodes = gpd.read_file(path, crs='epsg:4326')
-
-    existing_nodes = regional_nodes.loc[regional_nodes['source'] == 'existing']
-    f = lambda x:np.sum(existing_nodes.intersects(x))
-    regions['regional_nodes'] = regions['geometry'].apply(f)
-
-    for idx, region in regions.iterrows():
-        output.append({
-            'GID_id': region[regional_level],
-            'asset': 'regional_node',
-            'value': region['regional_nodes'],
-            'source': 'existing',
-        })
-
-    new_nodes = regional_nodes.loc[regional_nodes['source'] == 'new']
-    f = lambda x:np.sum(new_nodes.intersects(x))
-    regions['regional_nodes'] = regions['geometry'].apply(f)
-
-    for idx, region in regions.iterrows():
-        output.append({
-            'GID_id': region[regional_level],
-            'asset': 'regional_node',
-            'value': region['regional_nodes'],
-            'source': 'new',
-        })
-
-    output = pd.DataFrame(output)
-    output = output.drop_duplicates()
-    output.to_csv(output_path, index=False)
-
-    return print('Completed core lut')
-
-
-def generate_backhaul_lut(country):
-    """
-    Simulate backhaul distance given a 100km^2 area.
-      Simulations show that for every 10x increase in node density,
-      there is a 3.2x decrease in backhaul length.
-    node_density_km2	average_distance_km
-    0.000001	606.0	10	 3.2
-    0.00001	189.0	10	 3.8
-    0.0001	50.0	10	 3.1
-    0.001	16.0	10	 3.2
-    0.01	5.0	10	 3.2
-    0.1	1.6	10	 3.2
-    1	0.5
-    """
-    filename = 'backhaul_lut.csv'
-    folder = os.path.join(DATA_INTERMEDIATE)
-    path = os.path.join(folder, filename)
-
-    if os.path.exists(path):
-        return print('Backhaul LUT already generated')
-
-    output = []
-
-    number_of_regional_nodes_range = [1, 10, 100, 1000, 10000]
-
-    area_km2 = 1e6
-
-    for number_of_regional_nodes in number_of_regional_nodes_range:
-
-        sites = []
-
-        for i in range(1, int(round(max(number_of_regional_nodes_range) + 1))):
-            x = random.uniform(0, round(math.sqrt(area_km2)))
-            y = random.uniform(0, round(math.sqrt(area_km2)))
-            sites.append({
-                'geometry': {
-                    'type': 'Point',
-                    'coordinates': (x, y)
-                },
-                'properties': {
-                    'id': i
-                }
-            })
-
-        regional_nodes = []
-
-        for i in range(1, number_of_regional_nodes + 1):
-            x = random.uniform(0, round(math.sqrt(area_km2)))
-            y = random.uniform(0, round(math.sqrt(area_km2)))
-            regional_nodes.append({
-                'geometry': {
-                    'type': 'Point',
-                    'coordinates': (x, y)
-                },
-                'properties': {
-                    'id': i
-                }
-            })
-
-        distances = []
-
-        idx = index.Index()
-
-        for regional_node in regional_nodes:
-            idx.insert(
-                regional_node['properties']['id'],
-                shape(regional_node['geometry']).bounds,
-                regional_node)
-
-        for site in sites:
-
-            geom1 = shape(site['geometry'])
-
-            nearest_regional_node = [i for i in idx.nearest((geom1.bounds))][0]
-
-            for regional_node in regional_nodes:
-                if regional_node['properties']['id'] == nearest_regional_node:
-
-                    x1 = site['geometry']['coordinates'][0]
-                    x2 = regional_node['geometry']['coordinates'][0]
-                    y1 = site['geometry']['coordinates'][1]
-                    y2 = regional_node['geometry']['coordinates'][1]
-
-                    distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-
-                    distances.append(distance)
-
-        output.append({
-            'node_density_km2': round(number_of_regional_nodes / area_km2, 8),
-            'average_distance_km': int(round(sum(distances) / len(distances))),
-        })
-
-    output = pd.DataFrame(output)
-    output.to_csv(path, index=False)
-
-    return print('Completed backhaul LUT processing')
-
-
-def load_subscription_data(path, iso3):
-    """
-    Load in itu cell phone subscription data.
-    Parameters
-    ----------
-    path : string
-        Location of itu data as .csv.
-    country : string
-        ISO3 digital country code.
-    country_lut : list of dicts
-        Lookup table containing country name to ISO3 digit code.
-    Returns
-    -------
-    output :
-        Time series data of cell phone subscriptions.
-    """
-    output = []
-
-    historical_data = pd.read_csv(path, encoding = "ISO-8859-1")
-    historical_data = historical_data.to_dict('records')
-
-    scenarios = ['low', 'baseline', 'high']
-
-    for scenario in scenarios:
-        for year in range(2010, 2021):
-            year = str(year)
-            for item in historical_data:
-                if item['iso3'] == iso3:
-                    output.append({
-                        'scenario': scenario,
-                        'country': iso3,
-                        'penetration': float(item[year]) * 100,
-                        'year':  year,
-                    })
-
-    return output
-
-
-def forecast_subscriptions(country):
-    """
-    """
-    iso3 = country['iso3']
-
-    path = os.path.join(DATA_RAW, 'gsma', 'gsma_unique_subscribers.csv')
-    historical_data = load_subscription_data(path, country['iso3'])
-
-    start_point = 2021
-    end_point = 2030
-    horizon = 4
-
-    forecast = forecast_linear(
-        country,
-        historical_data,
-        start_point,
-        end_point,
-        horizon
-    )
-
-    forecast_df = pd.DataFrame(historical_data + forecast)
-
-    path = os.path.join(DATA_INTERMEDIATE, iso3, 'subscriptions')
-
-    if not os.path.exists(path):
-        os.mkdir(path)
-
-    forecast_df.to_csv(os.path.join(path, 'subs_forecast.csv'), index=False)
-
-    path = os.path.join(BASE_PATH, '..', 'vis', 'subscriptions', 'data_inputs')
-    forecast_df.to_csv(os.path.join(path, '{}.csv'.format(iso3)), index=False)
-
-    return print('Completed subscription forecast')
-
-
-def forecast_linear(country, historical_data, start_point, end_point, horizon):
-    """
-    Forcasts subscription adoption rate.
-    Parameters
-    ----------
-    historical_data : list of dicts
-        Past penetration data.
-    start_point : int
-        Starting year of forecast period.
-    end_point : int
-        Final year of forecast period.
-    horizon : int
-        Number of years to use to estimate mean growth rate.
-    """
-    output = []
-
-    scenarios = ['low', 'baseline', 'high']
-
-    for scenario in scenarios:
-
-        scenario_data = []
-
-        subs_growth = country['subs_growth_{}'.format(scenario)]
-
-        year_0 = sorted(historical_data, key = lambda i: i['year'], reverse=True)[0]
-
-        for year in range(start_point, end_point + 1):
-            if year == start_point:
-
-                penetration = year_0['penetration'] * (1 + (subs_growth/100))
-            else:
-                penetration = penetration * (1 + (subs_growth/100))
-
-            if year not in [item['year'] for item in scenario_data]:
-
-                scenario_data.append({
-                    'scenario': scenario,
-                    'country': country['iso3'],
-                    'year': year,
-                    'penetration': round(penetration, 2),
-                })
-
-        output = output + scenario_data
-
-    return output
-
-
 if __name__ == '__main__':
 
     countries = find_country_list(['Africa'])
@@ -2031,13 +1233,8 @@ if __name__ == '__main__':
 
     for country in countries:#[:1]:
 
-        # #Egypt is failing
-        # if not country['iso3'] == 'EGY':
-        #     continue
-
         print('----')
         print('-- Working on {}'.format(country['country_name']))
-        print('----')
 
         print('Processing country boundary')
         process_country_shapes(country)
@@ -2057,29 +1254,22 @@ if __name__ == '__main__':
         print('Getting regional data')
         get_regional_data(country)
 
-        # print('Generating agglomeration lookup table')
-        # generate_agglomeration_lut(country)
+    # #     ### print('Processing existing fibre data')
+    # #     ### process_existing_fiber(country)
 
-        # print('Load existing fiber infrastructure')
-        # process_existing_fiber(country)
+    all_regional_data = []
 
-        # print('Estimate existing nodes')
-        # find_nodes_on_existing_infrastructure(country)
+    for country in countries:
 
-        # print('Find regional nodes')
-        # find_regional_nodes(country)
+        print('----')
+        print('-- Working on {}'.format(country['country_name']))
 
-        # print('Fit edges')
-        # prepare_edge_fitting(country)
+        path = os.path.join(DATA_INTERMEDIATE, country['iso3'], 'regional_data.csv')
+        data = pd.read_csv(path, keep_default_na=False)
+        data = data.to_dict('records')
+        all_regional_data = all_regional_data + data
 
-        # print('Fit regional edges')
-        # fit_regional_edges(country)
+    all_regional_data = pd.DataFrame(all_regional_data)
 
-        # print('Create core lookup table')
-        # generate_core_lut(country)
-
-        # print('Create backhaul lookup table')
-        # generate_backhaul_lut(country)
-
-        # print('Create subscription forcast')
-        # forecast_subscriptions(country)
+    path = os.path.join(DATA_INTERMEDIATE, 'all_regional_data.csv')
+    all_regional_data.to_csv(path, index=False)
