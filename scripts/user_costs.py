@@ -180,6 +180,53 @@ def get_costs(data, costs):
     return output
 
 
+def processing_national_costs(regional_data):
+    """
+
+    """
+    national_costs = regional_data[[
+        'GID_0',
+        'scenario', 'strategy', 'confidence',
+        'population', 'area_km2',
+        'total_cost'
+    ]]
+
+    national_costs = national_costs.groupby([
+        'GID_0', 'scenario', 'strategy', 'confidence'], as_index=True).sum().reset_index()
+
+    national_costs['total_cost'] = national_costs['total_cost'] / 1e9
+
+    national_costs.columns = [
+        'Country', 'Scenario', 'Strategy', 'Confidence',
+        'Population', 'Area (Km2)', 'Cost ($Bn)'
+    ]
+
+    return national_costs
+
+
+def processing_total_costs(regional_results):
+    """
+
+    """
+    total_costs = regional_results[[
+        'scenario', 'strategy', 'confidence',
+        'population', 'area_km2',
+        'total_cost'
+    ]]
+
+    total_costs = total_costs.groupby([
+        'scenario', 'strategy', 'confidence'], as_index=True).sum().reset_index()
+
+    total_costs['total_cost'] = total_costs['total_cost'] / 1e9
+
+    total_costs.columns = [
+        'Scenario', 'Strategy', 'Confidence',
+        'Population', 'Area (Km2)', 'Cost ($Bn)'
+    ]
+
+    return total_costs
+
+
 if __name__ == '__main__':
 
     print('Loading PODIS cost estimate data')
@@ -217,5 +264,19 @@ if __name__ == '__main__':
     regional_data = pd.DataFrame(regional_data)
     path = os.path.join(BASE_PATH, '..', 'results', 'regional_cost_estimates.csv')
     regional_data.to_csv(path, index=False)
+
+    print('Processing results data')
+    national_costs = processing_national_costs(regional_data)
+
+    print('Exporting national results')
+    path = os.path.join(BASE_PATH, '..', 'results', 'national_cost_estimates.csv')
+    national_costs.to_csv(path, index=False)
+
+    print('Processing total cost data')
+    total_costs = processing_total_costs(regional_data)
+
+    print('Exporting national results')
+    path = os.path.join(BASE_PATH, '..', 'results', 'total_cost_estimates.csv')
+    total_costs.to_csv(path, index=False)
 
     print('Complete')
